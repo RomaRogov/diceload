@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1] - 2026-11-18
+
+### Fixed
+- Installed from git, the `Diceload` assembly wasn't compiled: Unity skips a package's test
+  assemblies (those constrained to `UNITY_INCLUDE_TESTS`) unless the package is in `testables`. It is
+  now constrained to the Test Framework being installed, as the Input System's test fixture is.
+
 ## [0.3.0] - 2026-11-18
 
 ### Changed

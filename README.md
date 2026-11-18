@@ -22,7 +22,7 @@ In the Package Manager, **+ ▸ Install package from git URL…**:
 https://github.com/RomaRogov/diceload.git
 ```
 
-or in `Packages/manifest.json`, `"com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.3.0"`.
+or in `Packages/manifest.json`, `"com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.3.1"`.
 It brings the Test Framework and the Input System; set the Input System as the active input handling.
 Installed from git, the tools below are in `Library/PackageCache/com.roro.diceload@…/Tools~/`.
 
