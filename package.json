@@ -1,0 +1,30 @@
+{
+  "name": "com.roro.diceload",
+  "version": "0.3.0",
+  "displayName": "Diceload Simulation",
+  "description": "Let an agent play and check a Unity game the way Playwright drives a page: a PlayMode test loads the game, plays it with real input on a held 1/60 s clock, reads its state in plain C#, takes screenshots with the UI on top, and asserts. Built on the Unity Test Framework and InputTestFixture.",
+  "unity": "6000.0",
+  "documentationUrl": "https://github.com/RomaRogov/diceload#readme",
+  "changelogUrl": "https://github.com/RomaRogov/diceload/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/RomaRogov/diceload/blob/main/LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RomaRogov/diceload.git"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "simulation",
+    "playtesting",
+    "testing",
+    "determinism"
+  ],
+  "dependencies": {
+    "com.unity.test-framework": "1.4.5",
+    "com.unity.inputsystem": "1.7.0"
+  },
+  "author": {
+    "name": "roro",
+    "url": "https://github.com/RomaRogov"
+  }
+}

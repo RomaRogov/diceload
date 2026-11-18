@@ -1,0 +1,44 @@
+#!/bin/zsh
+# unity-dialog               the dialog the Unity Editor of this project is waiting on: its title, text and buttons
+# unity-dialog press NAME    press one of its buttons (prefer the one that loses nothing: Cancel)
+#
+# A modal dialog stops the Editor's main thread: every `unity command` then times out ("did not start
+# within its timeout"). This reads the dialog from outside the Editor through the macOS Accessibility
+# API, with a small helper app (UnityDialog.swift → ~/.diceload/Unity Dialog.app) allowed once, on its
+# own, in System Settings ▸ Privacy & Security ▸ Accessibility.
+set -u
+here=${0:A:h}; source $here/editor-pid.sh
+[[ -z "$editor_pid" ]] && { echo "no Unity Editor has $project open"; exit 2; }
+
+# The helper is an app of its own, launched through LaunchServices (open): macOS then holds it — not
+# the terminal, Claude or whatever runs this script — responsible for using Accessibility, so only it
+# needs allowing, once. Built only when missing: a rebuilt app is a new one to macOS.
+app=$HOME/.diceload/Unity\ Dialog.app
+app=${app//\\/}
+if [[ ! -x "$app/Contents/MacOS/UnityDialog" ]]; then
+  mkdir -p "$app/Contents/MacOS"
+  cp $here/Info.plist "$app/Contents/Info.plist"
+  swiftc -O -o "$app/Contents/MacOS/UnityDialog" $here/UnityDialog.swift 2>&1 | tail -5
+  [[ -x "$app/Contents/MacOS/UnityDialog" ]] || { echo "couldn't build the helper (needs Xcode's command line tools: xcode-select --install)"; exit 6; }
+  codesign --force --sign - --identifier com.roro.diceload.unity-dialog "$app" 2>&1 | grep -v "replacing existing"
+fi
+
+out=$(mktemp -t unity-dialog)
+if [[ ${1:-} == press ]]; then
+  open -W -n -g -a "$app" --stdout $out --stderr $out --args $editor_pid press "${2:?usage: unity-dialog press NAME}" 2>/dev/null
+else
+  open -W -n -g -a "$app" --stdout $out --stderr $out --args $editor_pid 2>/dev/null
+fi
+# The helper can finish before open starts waiting on it; its output reaches the file when it exits.
+for i in {1..50}; do [[ -s $out ]] && break; sleep 0.1; done
+result=$(cat $out); rm -f $out
+[[ -z "$result" ]] && { echo "the helper didn't answer"; exit 7; }
+print -r -- "$result"
+case $result in
+  "not allowed"*)
+    echo "A person has to allow it once: System Settings ▸ Privacy & Security ▸ Accessibility ▸ Unity Dialog ($app)."
+    echo "Until then: wait for a person to answer the dialog, or unity-restart (unsaved changes in the Editor are lost)."
+    exit 5 ;;
+  "no button"*|"couldn't press"*) exit 1 ;;
+  *) exit 0 ;;
+esac
