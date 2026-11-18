@@ -1,3 +1,4 @@
 .DS_Store
 # Unity hides folders ending in ~; they still ship with the package.
 !Tools~/
+!Skills~/

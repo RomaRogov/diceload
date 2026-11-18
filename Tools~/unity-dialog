@@ -1,42 +1,67 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # unity-dialog               the dialog the Unity Editor of this project is waiting on: its title, text and buttons
 # unity-dialog press NAME    press one of its buttons (prefer the one that loses nothing: Cancel)
 #
 # A modal dialog stops the Editor's main thread: every `unity command` then times out ("did not start
-# within its timeout"). This reads the dialog from outside the Editor through the macOS Accessibility
-# API, with a small helper app (UnityDialog.swift → ~/.diceload/Unity Dialog.app) allowed once, on its
-# own, in System Settings ▸ Privacy & Security ▸ Accessibility.
+# within its timeout"). This reads the dialog from outside the Editor, through the system's accessibility
+# API:
+#   macOS    a small helper app (UnityDialog.swift → ~/.diceload/Unity Dialog.app), allowed once, on its
+#            own, in System Settings ▸ Privacy & Security ▸ Accessibility; built with Xcode's command line tools.
+#   Windows  UI Automation from PowerShell (unity-dialog.ps1), run from Git Bash. Nothing to allow.
+#   Linux    not supported: unity-restart.
 set -u
-here=${0:A:h}; source $here/editor-pid.sh
-[[ -z "$editor_pid" ]] && { echo "no Unity Editor has $project open"; exit 2; }
+here=$(cd "$(dirname "$0")" && pwd); . "$here/editor-pid.sh"
+[ -z "$editor_pid" ] && { echo "no Unity Editor has $project open"; exit 2; }
+[ "${1:-}" = press ] && [ -z "${2:-}" ] && { echo "usage: unity-dialog press NAME"; exit 2; }
 
-# The helper is an app of its own, launched through LaunchServices (open): macOS then holds it — not
-# the terminal, Claude or whatever runs this script — responsible for using Accessibility, so only it
-# needs allowing, once. Built only when missing: a rebuilt app is a new one to macOS.
-app=$HOME/.diceload/Unity\ Dialog.app
-app=${app//\\/}
-if [[ ! -x "$app/Contents/MacOS/UnityDialog" ]]; then
-  mkdir -p "$app/Contents/MacOS"
-  cp $here/Info.plist "$app/Contents/Info.plist"
-  swiftc -O -o "$app/Contents/MacOS/UnityDialog" $here/UnityDialog.swift 2>&1 | tail -5
-  [[ -x "$app/Contents/MacOS/UnityDialog" ]] || { echo "couldn't build the helper (needs Xcode's command line tools: xcode-select --install)"; exit 6; }
-  codesign --force --sign - --identifier com.roro.diceload.unity-dialog "$app" 2>&1 | grep -v "replacing existing"
-fi
+case $(uname -s) in
+Darwin)
+  # The helper is an app of its own, launched through LaunchServices (open): macOS then holds it — not
+  # the terminal, Claude or whatever runs this script — responsible for using Accessibility, so only it
+  # needs allowing, once. Built only when missing: a rebuilt app is a new one to macOS.
+  app="$HOME/.diceload/Unity Dialog.app"
+  if [ ! -x "$app/Contents/MacOS/UnityDialog" ]; then
+    mkdir -p "$app/Contents/MacOS"
+    cp "$here/Info.plist" "$app/Contents/Info.plist"
+    swiftc -O -o "$app/Contents/MacOS/UnityDialog" "$here/UnityDialog.swift" 2>&1 | tail -5
+    [ -x "$app/Contents/MacOS/UnityDialog" ] || { echo "couldn't build the helper (needs Xcode's command line tools: xcode-select --install)"; exit 6; }
+    codesign --force --sign - --identifier com.roro.diceload.unity-dialog "$app" 2>&1 | grep -v "replacing existing"
+  fi
+  out=$(mktemp -t unity-dialog)
+  if [ "${1:-}" = press ]; then
+    open -W -n -g -a "$app" --stdout "$out" --stderr "$out" --args "$editor_pid" press "$2" 2>/dev/null
+  else
+    open -W -n -g -a "$app" --stdout "$out" --stderr "$out" --args "$editor_pid" 2>/dev/null
+  fi
+  # The helper can finish before open starts waiting on it; its output reaches the file when it exits.
+  i=0; while [ ! -s "$out" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  result=$(cat "$out"); rm -f "$out"
+  allow="System Settings ▸ Privacy & Security ▸ Accessibility ▸ Unity Dialog ($app)" ;;
+MINGW*|MSYS*|CYGWIN*)
+  script=$(cygpath -w "$here/unity-dialog.ps1")
+  if [ "${1:-}" = press ]; then
+    result=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$script" -EditorPid "$editor_pid" -Press "$2" 2>&1 | tr -d '\r')
+  else
+    result=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$script" -EditorPid "$editor_pid" 2>&1 | tr -d '\r')
+  fi
+  allow="Windows didn't let PowerShell read the Unity window" ;;
+*)
+  echo "unity-dialog doesn't support $(uname -s): answer the dialog, or run unity-restart (unsaved changes are lost)"; exit 8 ;;
+esac
 
-out=$(mktemp -t unity-dialog)
-if [[ ${1:-} == press ]]; then
-  open -W -n -g -a "$app" --stdout $out --stderr $out --args $editor_pid press "${2:?usage: unity-dialog press NAME}" 2>/dev/null
-else
-  open -W -n -g -a "$app" --stdout $out --stderr $out --args $editor_pid 2>/dev/null
-fi
-# The helper can finish before open starts waiting on it; its output reaches the file when it exits.
-for i in {1..50}; do [[ -s $out ]] && break; sleep 0.1; done
-result=$(cat $out); rm -f $out
-[[ -z "$result" ]] && { echo "the helper didn't answer"; exit 7; }
-print -r -- "$result"
+[ -z "$result" ] && { echo "the helper didn't answer"; exit 7; }
+# Some of the Editor's own windows (a utility window, a tooltip) look like dialogs but have no buttons:
+# what waits on an answer has one.
+result=$(printf '%s\n' "$result" | awk '
+  /^(dialog|sheet): / { block = $0 "\n"; inblock = 1; next }
+  inblock && /^  text: / { block = block $0 "\n"; next }
+  inblock && /^  buttons:/ { if ($0 != "  buttons: ") { printf "%s%s\n", block, $0; shown = 1 } inblock = 0; next }
+  { print; other = 1 }
+  END { if (!shown && !other) print "no dialog: the Editor isn'\''t waiting on one (it may be busy compiling or importing — wait, then try again)" }')
+printf '%s\n' "$result"
 case $result in
   "not allowed"*)
-    echo "A person has to allow it once: System Settings ▸ Privacy & Security ▸ Accessibility ▸ Unity Dialog ($app)."
+    echo "A person has to allow it once: $allow."
     echo "Until then: wait for a person to answer the dialog, or unity-restart (unsaved changes in the Editor are lost)."
     exit 5 ;;
   "no button"*|"couldn't press"*) exit 1 ;;

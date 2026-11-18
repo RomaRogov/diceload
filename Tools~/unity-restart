@@ -1,18 +1,11 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # unity-restart    stop the Unity Editor of this project and open the project again — the last resort when
 #                  it's blocked and unity-dialog can't answer what blocks it. What only the Editor held
 #                  (unsaved changes) is lost; scenes and prefabs with text twins are in their files.
+#                  Needs bash and the unity CLI only: macOS, Linux, and Windows in Git Bash.
 set -u
-here=${0:A:h}; source $here/editor-pid.sh
-if [[ -n "$editor_pid" ]]; then
-  kill -TERM $editor_pid 2>/dev/null
-  for i in {1..20}; do kill -0 $editor_pid 2>/dev/null || break; sleep 1; done
-  kill -0 $editor_pid 2>/dev/null && kill -KILL $editor_pid
-  echo "stopped the Editor ($editor_pid)"
-fi
+project=${UNITY_PROJECT_PATH:-$PWD}
+unity close --force --timeout 20 "$project" >/dev/null 2>&1 && echo "stopped the Editor"
 unity open "$project" >/dev/null 2>&1
-for i in {1..60}; do
-  if timeout 8 unity command console status --result-only >/dev/null 2>&1; then echo "the Editor is open again"; exit 0; fi
-  sleep 5
-done
+if unity status --project-path "$project" --until-ready --timeout 300 >/dev/null 2>&1; then echo "the Editor is open again"; exit 0; fi
 echo "the Editor didn't come back within 5 minutes"; exit 1

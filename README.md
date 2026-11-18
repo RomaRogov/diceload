@@ -22,9 +22,31 @@ In the Package Manager, **+ ▸ Install package from git URL…**:
 https://github.com/RomaRogov/diceload.git
 ```
 
-or in `Packages/manifest.json`, `"com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.3.1"`.
+or in `Packages/manifest.json`, `"com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.4.0"`.
 It brings the Test Framework and the Input System; set the Input System as the active input handling.
 Installed from git, the tools below are in `Library/PackageCache/com.roro.diceload@…/Tools~/`.
+
+### A project for an agent, on a new machine (macOS or Windows)
+
+1. **Unity 6** (6000.0 or later) and **Unity's CLI**, `unity`: `curl -fsSL https://unity.com/install.sh | bash`
+   on macOS and Linux, `irm https://unity.com/install.ps1 | iex` in PowerShell on Windows.
+2. **The project:** the Input System as the active input handling (Project Settings ▸ Player), then both
+   packages, in `Packages/manifest.json`:
+   ```json
+   "com.roro.scenoco": "https://github.com/RomaRogov/scenoco-unity.git#v0.1.1",
+   "com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.4.0"
+   ```
+   Private repositories install with the machine's git login (a credential helper, or SSH URLs).
+3. **The Editor's command server:** `unity pipeline install` in the project folder (`com.unity.pipeline`).
+   Open the project (`unity open .`); `unity status` then lists its Editor as `ready`.
+4. **The skill:** copy `Skills~/unity-game` from the package into the project's `.claude/skills/`
+   (or `~/.claude/skills/` for every project):
+   ```bash
+   mkdir -p .claude/skills && cp -R Library/PackageCache/com.roro.diceload@*/Skills~/unity-game .claude/skills/
+   ```
+5. **The agent's shell:** the tools are bash scripts. Claude Code on Windows runs commands in Git Bash
+   (Git for Windows), which is all they need there. On macOS, `unity-dialog` builds its helper once
+   with Xcode's command line tools (`xcode-select --install`), and a person allows it once (below).
 
 ## Writing a simulation
 
@@ -64,7 +86,8 @@ public class LevelOne : GameSimulation
 
 - **A frame is `yield return null`, and it's exactly 1/60 s of game time.** Frames run as fast as the
   machine allows and aren't drawn (2–6× faster; cameras stay enabled), so a minute of play takes seconds.
-  Wait with `WaitForSeconds` or `WaitUntil(cond, timeout, onTimeout, WaitTimeoutMode.InGameTime)`.
+  Wait with `WaitForSeconds` or `WaitUntil(cond, TimeSpan.FromSeconds(60), onTimeout, WaitTimeoutMode.InGameTime)`
+  (the timeout is a `TimeSpan`).
 - **`Load(scene, seed)` is a replayable start:** fixed clock aligned, `Random` seeded, scene fresh, every
   `Start` run. Same seed and same input play out the same; load again to replay or to try a value.
 - **Input comes only from the test.** `keyboard` and `mouse` are `Keyboard.current` / `Mouse.current` in
@@ -83,18 +106,22 @@ unity recompile                                   # reports compile errors
 Packages/com.roro.diceload/Tools~/unity-test LevelOne
 ```
 
-`unity-test` runs in the open Editor and waits: it saves unsaved work first (`UnsavedWork.Save`, so the
-Test Framework doesn't ask), says why when no test matches the filter (`TestFilter`), then prints the
-summary, each failure and each test's results folder. Headless, in CI: `unity test . --mode PlayMode --filter LevelOne`.
+`unity-test` runs in the open Editor and waits. The Editor does the work (`TestRun`): it saves unsaved
+work first (`UnsavedWork`, so the Test Framework doesn't ask), says why when no test matches the filter
+(`TestFilter`), runs, and writes the summary, each failure and each test's results folder to
+`Library/Diceload/test-run.txt`, which `unity-test` prints. Headless, in CI: `unity test . --mode PlayMode --filter LevelOne`.
 
 ## When the Editor stops answering
 
 A modal dialog stops the Editor, and every `unity command` times out. `Tools~/unity-dialog` reads it —
-title, text, buttons — and `unity-dialog press "Cancel"` answers it. It uses a small helper app,
-`~/.diceload/Unity Dialog.app`, which a person allows once in System Settings ▸ Privacy & Security ▸
-Accessibility ("Unity Dialog"; a rebuilt helper needs allowing again). `Tools~/unity-restart` is the last
-resort: it reopens the project, losing what only the Editor held. Under Claude Code's sandbox both run
-outside it (`sandbox.excludedCommands`).
+title, text, buttons — and `unity-dialog press "Cancel"` answers it, through the system's accessibility API:
+- **macOS:** a small helper app, `~/.diceload/Unity Dialog.app`, which a person allows once in System
+  Settings ▸ Privacy & Security ▸ Accessibility ("Unity Dialog"; a rebuilt helper needs allowing again).
+- **Windows:** UI Automation from PowerShell (`unity-dialog.ps1`); nothing to allow.
+- **Linux:** not supported.
+
+`Tools~/unity-restart` is the last resort: it closes and reopens the project with Unity's CLI, losing what
+only the Editor held. Under Claude Code's sandbox (macOS, Linux) both run outside it (`sandbox.excludedCommands`).
 
 ## Limits
 
@@ -117,4 +144,5 @@ Unity 6, `com.unity.test-framework` 1.4+, `com.unity.inputsystem` 1.7+ as the ac
 | `Screenshot` | cameras into one PNG, with the UI on top |
 | `OverlayCanvases`, `ToolkitPanels` | uGUI's and UI Toolkit's screen UI drawn into a screenshot |
 | `ResultsFolder`, `TestLog` | the test's folder and `result.txt`; its frame-stamped log |
+| `TestRun` (Editor) | a run a shell waits for: start it, and its outcome as plain text |
 | `UnsavedWork`, `TestFilter` (Editor) | save before a run without a dialog; why a filter matched no test |

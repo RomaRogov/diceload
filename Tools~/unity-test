@@ -1,80 +1,41 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # unity-test FILTER [playmode|editmode] [MINUTES]
-#   Run tests (simulations: playmode, the default) in the open Editor and wait for them, in one call:
-#   1. save what's unsaved (Diceload.UnsavedWork.Save), so the Test Framework doesn't ask;
-#   2. check that a test in this mode matches FILTER — if none, say why (Diceload.TestFilter) and stop;
-#   3. run, wait, and print the summary, each failure and each test's SimulationResults/<Fixture>/<Test>/.
+#   Run tests (simulations: playmode, the default) in the open Editor and wait for them, in one call.
+#   The Editor does the work (Diceload.TestRun): it saves unsaved work, so the Test Framework doesn't ask;
+#   says why when no test matches; runs; and writes the outcome as plain text to
+#   Library/Diceload/test-run.txt — the summary, each failure, each test's SimulationResults folder —
+#   which this prints.
 #   Exit: 0 ran, 2 not ready, 3 the Editor isn't answering (see unity-dialog), 4 still running, 5 no test.
+#   Needs bash and the unity CLI only: macOS, Linux, and Windows in Git Bash.
 set -u
 filter=${1:?usage: unity-test FILTER [playmode|editmode] [MINUTES]}; mode=${2:-playmode}; minutes=${3:-15}
-here=${0:A:h}
-
-# The value a `unity command … --result-only` printed, as text: its "result", else its errors.
-# (The CLI may print a hint line after its JSON.)
-answer() {
-  python3 -c 'import sys,json
-try: d = json.JSONDecoder().raw_decode(sys.stdin.read().strip())[0]
-except Exception: print("no answer"); sys.exit()
-if d.get("result") is not None: print(d["result"])
-else: print("; ".join(e.get("code","") + ": " + e.get("message","") for e in d.get("errors", [])) or "no answer")'
-}
-
-# Run C# in the Editor and print what it returns.
-editor() { timeout 30 unity command script eval --code "$1" --result-only 2>&1 | answer; }
+here=$(cd "$(dirname "$0")" && pwd)
+report=${UNITY_PROJECT_PATH:-$PWD}/Library/Diceload/test-run.txt
 
 not_answering() { echo "the Editor isn't answering: run $here/unity-dialog to see what it waits on"; exit 3; }
 
-# 1. Ready: nothing unsaved that would make Unity ask.
-ready=$(editor 'return Diceload.UnsavedWork.Save();')
-case $ready in
-  ready*) ;;
-  "no answer"|*"did not start within"*|*"Timed Out"*) not_answering ;;
-  *EDITOR_NOT_RUNNING*) echo "no Editor has this project open: unity open ."; exit 2 ;;
-  *) echo "$ready"; exit 2 ;;
-esac
-
-# 2. A run that matches nothing never starts, and Unity's status would still be the last run's.
-matches=$(timeout 60 unity command test list --mode $mode --result-only 2>/dev/null | FILTER=$filter python3 -c 'import sys,json,os,re
-try: tests = json.JSONDecoder().raw_decode(sys.stdin.read().strip())[0].get("Tests", [])
-except Exception: print("?"); sys.exit()
-f = os.environ["FILTER"]
-def hit(n):
-    if f.lower() in n.lower(): return True
-    try: return re.search(f, n) is not None
-    except re.error: return False
-print(sum(1 for t in tests if hit(t["FullName"])))')
-if [[ "$matches" == 0 ]]; then
-  echo "no test ran: $(editor "return Diceload.TestFilter.WhyNothingRan(\"${filter//\"/\\\"}\", \"$mode\");")"
-  exit 5
+quoted=${filter//\\/\\\\}; quoted=${quoted//\"/\\\"}
+answer=$(unity command --timeout 60 script eval --code "return Diceload.TestRun.Start(\"$quoted\", \"$mode\");" --result-only 2>&1)
+run=$(printf '%s' "$answer" | grep -o 'run-[0-9]\{17\}' | head -n 1)
+if [ -z "$run" ]; then
+  case $answer in
+    *EDITOR_NOT_RUNNING*) echo "no Editor has this project open: unity open ."; exit 2 ;;
+    ""|*"did not start within"*|*[Tt]imed\ out*|*TIMEOUT*) not_answering ;;
+    *) echo "couldn't start the run:"; printf '%s\n' "$answer" | head -n 20; exit 2 ;;
+  esac
 fi
 
-# 3. Run and wait. The status before this run is ignored until the run starts or the status changes.
-status() { timeout 15 unity command test status --result-only 2>/dev/null; }
-before=$(status)
-timeout 60 unity command test run --mode $mode --filter "$filter" --async-tests true --result-only >/dev/null 2>&1
-silent=0; started=0; same=0; deadline=$(( $(date +%s) + minutes * 60 ))
-while (( $(date +%s) < deadline )); do
-  sleep 3
-  r=$(status)
-  if [[ -z "$r" ]]; then
-    (( ++silent >= 20 )) && not_answering          # entering and leaving Play mode reloads scripts: a few silent polls are normal
-    continue
+# Entering and leaving Play mode reloads scripts: a few polls the Editor doesn't answer are normal.
+deadline=$(( $(date +%s) + minutes * 60 )); silent=0
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  if [ -f "$report" ] && [ "$(head -n 1 "$report")" = "$run done" ]; then
+    tail -n +2 "$report"
+    case $(sed -n 2p "$report") in "no test:"*) exit 5 ;; "not ready:"*) exit 2 ;; esac
+    exit 0
   fi
-  silent=0
-  s=$(print -r -- "$r" | python3 -c 'import sys,json; print(json.JSONDecoder().raw_decode(sys.stdin.read().strip())[0].get("status",""))' 2>/dev/null)
-  if [[ "$s" == "running" ]]; then started=1; continue; fi
-  [[ -z "$s" ]] && continue
-  if (( ! started )) && [[ "$r" == "$before" ]] && (( ++same < 10 )); then continue; fi   # unchanged for 30 s: the same outcome
-  print -r -- "$r" | python3 -c '
-import sys, json, os
-r = json.JSONDecoder().raw_decode(sys.stdin.read().strip())[0]
-print(r.get("status"), "in", r.get("duration"), "s:", r.get("summary"))
-for t in r.get("results", []):
-    name = t["FullName"]
-    if t["Status"] != "Passed": print("FAILED", name, "\n ", (t.get("Message") or "").strip()[:1500])
-    parts = name.split(".")
-    d = os.path.join("SimulationResults", parts[-2] if len(parts) > 1 else "", parts[-1])
-    if os.path.isdir(d): print("  results:", d, "->", ", ".join(sorted(os.listdir(d))))'
-  exit 0
+  sleep 3
+  if unity command --timeout 10 editor status --result-only >/dev/null 2>&1; then silent=0
+  else silent=$((silent + 1)); [ "$silent" -ge 20 ] && not_answering
+  fi
 done
-echo "still running after $minutes minutes"; exit 4
+echo "still running after $minutes minutes (the outcome will be in $report)"; exit 4

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0] - 2026-11-18
+
+### Changed
+- The tools are bash and Unity's CLI only, so they run on macOS, Linux and Windows (Git Bash): no
+  zsh, Python or GNU `timeout`. `unity-test`'s work moved into the Editor: `TestRun.Start(filter, mode)`
+  saves, checks the filter, runs, and writes the outcome as plain text to `Library/Diceload/test-run.txt`.
+  It now finds the results folders of namespaced and parameterized tests.
+- `unity-restart` uses `unity close --force` and `unity open`.
+- `unity-dialog` leaves out windows with no buttons, which aren't waiting on an answer.
+
+### Added
+- `unity-dialog` on Windows, through UI Automation (`unity-dialog.ps1`).
+- The agent skill, in `Skills~/unity-game`, and a setup guide for a new machine in the README.
+
 ## [0.3.1] - 2026-11-18
 
 ### Fixed

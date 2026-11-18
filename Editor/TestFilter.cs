@@ -10,7 +10,7 @@ namespace Diceload
     /// <summary>
     /// Why a test run found nothing, from the test methods loaded now: Unity matches the filter against a
     /// test's full name (Namespace.Fixture.Method), PlayMode doesn't load an Editor-only assembly, and a
-    /// simulation (<c>[UnityTest]</c>) runs in playmode. <c>unity-test</c> asks it when no test matches.
+    /// simulation (<c>[UnityTest]</c>) runs in playmode. <see cref="TestRun"/> asks it when no test matches.
     /// </summary>
     public static class TestFilter
     {
@@ -42,6 +42,10 @@ namespace Diceload
             return $"{matched.Count} test(s) match ({string.Join(", ", matched.Take(5).Select(t => t.Name))}) but Unity ran none in {mode}: " +
                    "check unity recompile for errors, and the other mode.";
         }
+
+        /// <summary>The full names (Namespace.Fixture.Method) of the loaded tests the filter matches.</summary>
+        public static IEnumerable<string> Matching(string filter) =>
+            LoadedTests().Where(t => Matches(t.Name, filter)).Select(t => t.Name);
 
         /// <summary>Every NUnit or UTF test method in the project's assemblies (not Unity's or the runtime's).</summary>
         static List<Test> LoadedTests()
