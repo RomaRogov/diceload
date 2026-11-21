@@ -22,7 +22,7 @@ In the Package Manager, **+ ▸ Install package from git URL…**:
 https://github.com/RomaRogov/diceload.git
 ```
 
-or in `Packages/manifest.json`, `"com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.4.0"`.
+or in `Packages/manifest.json`, `"com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.5.0"`.
 It brings the Test Framework and the Input System; set the Input System as the active input handling.
 Installed from git, the tools below are in `Library/PackageCache/com.roro.diceload@…/Tools~/`.
 
@@ -33,12 +33,13 @@ Installed from git, the tools below are in `Library/PackageCache/com.roro.dicelo
 2. **The project:** the Input System as the active input handling (Project Settings ▸ Player), then both
    packages, in `Packages/manifest.json`:
    ```json
-   "com.roro.scenoco": "https://github.com/RomaRogov/scenoco-unity.git#v0.1.1",
-   "com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.4.0"
+   "com.roro.scenoco": "https://github.com/RomaRogov/scenoco-unity.git#v0.2.0",
+   "com.roro.diceload": "https://github.com/RomaRogov/diceload.git#v0.5.0"
    ```
    Private repositories install with the machine's git login (a credential helper, or SSH URLs).
 3. **The Editor's command server:** `unity pipeline install` in the project folder (`com.unity.pipeline`).
-   Open the project (`unity open .`); `unity status` then lists its Editor as `ready`.
+   Open the project with `unity open . --until-ready`: it returns once the Editor takes commands, and fails
+   if a dialog stops it — then `Tools~/unity-dialog` reads it (scripts that don't compile ask about Safe Mode).
 4. **The skill:** copy `Skills~/unity-game` from the package into the project's `.claude/skills/`
    (or `~/.claude/skills/` for every project):
    ```bash
@@ -88,16 +89,27 @@ public class LevelOne : GameSimulation
   machine allows and aren't drawn (2–6× faster; cameras stay enabled), so a minute of play takes seconds.
   Wait with `WaitForSeconds` or `WaitUntil(cond, TimeSpan.FromSeconds(60), onTimeout, WaitTimeoutMode.InGameTime)`
   (the timeout is a `TimeSpan`).
-- **`Load(scene, seed)` is a replayable start:** fixed clock aligned, `Random` seeded, scene fresh, every
-  `Start` run. Same seed and same input play out the same; load again to replay or to try a value.
+- **`Load(scene, seed)` is a replayable start:** what the last test kept with `DontDestroyOnLoad` gone
+  (`keepAcrossScenes: true` keeps it), fixed clock aligned, `Random` seeded, scene fresh, every `Start`
+  run. Same seed and same input play out the same; load again to replay or to try a value.
+- **Unscaled time is real time.** Unity can't hold `Time.unscaledDeltaTime`, so while frames run fast,
+  a fade on unscaled time, `WaitForSecondsRealtime`, a UI Toolkit transition or a sound barely moves.
+  `yield return PlayInRealTime(seconds)` plays that stretch paced at real time, both clocks together.
 - **Input comes only from the test.** `keyboard` and `mouse` are `Keyboard.current` / `Mouse.current` in
   the game; a key pressed in frame N is seen in frame N+1. `Press` on a held key does nothing, so a loop
   can say "hold right" every frame. Other devices: `InputSystem.AddDevice<Gamepad>()`.
 - **Read and change the game with plain C#.** A value set after `Load` is tuning; `[ValueSource]` sweeps it.
 - **Look with `Capture`:** cameras in depth order, then uGUI overlay canvases and UI Toolkit panels on
-  top. `OnGUI` is never in it.
+  top, at the size the game runs at. `OnGUI` is never in it.
+- **Pick the screen with `SetResolution(width, height)`:** `yield return SetResolution(1080, 1920)` runs
+  the game at that size — `Screen`, cameras, UI and captures follow — so one test can play a phone held
+  upright and another a wide screen. Before `Load` for a game that lays itself out as it starts. In the
+  Editor it is the Game view's size, and the person's own is selected again when the test ends.
+  (`Capture(name, width, height)` only scales the picture: the layout stays the game's.)
+- **Listen with `AudioLevel()`:** the RMS of what the AudioListener heard last, 0 for silence.
 - **Report with `Debug.Log`.** Every line logged during the test, the game's too, goes frame-stamped into
   `result.txt` beside the screenshots, with the outcome. A logged error or exception fails the test.
+  When the test ends, the game stops (every root made inactive) before its input is taken away.
 
 ## Running it
 

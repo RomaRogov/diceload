@@ -32,7 +32,9 @@ namespace Diceload
         public static void WriteResult(string log)
         {
             var outcome = TestContext.CurrentContext.Result;
-            System.IO.File.WriteAllText(File("result.txt"), $"{outcome.Outcome}\n{outcome.Message}\n\n{log}");
+            // What the test itself threw has no other record: its stack says the line. An assertion's message is enough.
+            var stack = outcome.Outcome.Status == NUnit.Framework.Interfaces.TestStatus.Failed && outcome.Outcome.Label == "Error" ? $"{outcome.StackTrace}\n" : "";
+            System.IO.File.WriteAllText(File("result.txt"), $"{outcome.Outcome}\n{outcome.Message}\n{stack}\n{log}");
         }
 
         static string Safe(string text)

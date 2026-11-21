@@ -59,6 +59,10 @@ result=$(printf '%s\n' "$result" | awk '
   { print; other = 1 }
   END { if (!shown && !other) print "no dialog: the Editor isn'\''t waiting on one (it may be busy compiling or importing — wait, then try again)" }')
 printf '%s\n' "$result"
+# Opened with scripts that don't compile, Unity asks before anything loads — the CLI's Pipeline package too.
+case $result in
+  *"Safe Mode"*) echo 'This is Safe Mode: the project has compile errors. Press "Ignore" (unity-dialog press "Ignore") to open the Editor with them listed — Safe Mode loads no packages, so no unity command would work — then unity recompile prints them.' ;;
+esac
 case $result in
   "not allowed"*)
     echo "A person has to allow it once: $allow."

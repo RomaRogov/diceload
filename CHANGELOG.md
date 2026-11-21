@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.0] - 2026-11-20
+
+### Added
+- `unity-dialog` names the Safe Mode dialog — scripts that don't compile — and the button that opens the
+  Editor with the errors listed; README and skill open a project with `unity open . --until-ready`.
+- `SetResolution(width, height)`: the game runs at that size from the next frame — `Screen`, cameras,
+  UI and captures follow. In the Editor it is a Game view size of its own; the person's size is
+  selected again, and that one removed, when the test ends. In a player, `Screen.SetResolution`.
+- `PlayInRealTime(seconds)`: frames paced at real time, so unscaled time — a UI fade,
+  `WaitForSecondsRealtime`, a UI Toolkit transition, sound — keeps up with game time. Unity can't hold
+  `Time.unscaledDeltaTime`; under a held clock, 60 frames moved it 0.04 s.
+- `AudioLevel()`: the RMS of what the AudioListener put out last, so a test can tell the game isn't silent.
+
+### Changed
+- `Load` starts fresh: what an earlier test kept with `DontDestroyOnLoad` is destroyed first.
+  `Load(scene, seed, keepAcrossScenes: true)` keeps it.
+- `Capture` draws at the Game view's size by default, so a portrait game is captured as it laid itself
+  out; it used to be 1280×720 whatever the game expected.
+
+### Fixed
+- A test that throws has its stack in `result.txt`, after the message: it used to say only
+  `NullReferenceException`, with nothing to tell which line.
+- `unity-test` compiles what changed before it runs, and stops on a compile error. It used to run the
+  last compiled code, so a test edited since then ran as it was before, with no sign.
+- The game ran frames after a test had restored the Input System, and what it threw then reached the
+  Console but not `result.txt`. Teardown now makes every root inactive first, while the log still records.
+
 ## [0.4.0] - 2026-11-18
 
 ### Changed

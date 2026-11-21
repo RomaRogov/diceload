@@ -22,6 +22,29 @@ namespace Diceload
         public static void Release() => Time.captureDeltaTime = 0;
 
         /// <summary>
+        /// Run frames paced at one per <see cref="FrameSeconds"/> of real time for <paramref name="seconds"/>,
+        /// so game time and unscaled time move together. Unity can't hold <c>Time.unscaledDeltaTime</c>:
+        /// it is real time, and while frames run fast a fade on unscaled time, <c>WaitForSecondsRealtime</c>
+        /// or a UI Toolkit transition barely moves.
+        /// </summary>
+        public static IEnumerator PlayInRealTime(float seconds)
+        {
+            var rate = Application.targetFrameRate;
+            var vSync = QualitySettings.vSyncCount;
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = Mathf.RoundToInt(1 / FrameSeconds);
+            try
+            {
+                for (var end = Time.realtimeSinceStartupAsDouble + seconds; Time.realtimeSinceStartupAsDouble < end;) yield return null;
+            }
+            finally
+            {
+                Application.targetFrameRate = rate;
+                QualitySettings.vSyncCount = vSync;
+            }
+        }
+
+        /// <summary>
         /// Stretch one frame so it ends just past a fixed step. Unity keeps the fixed-update clock running
         /// across scene loads; from here every load starts on the same phase of it, so FixedUpdate counts
         /// and interpolated positions repeat exactly.

@@ -28,6 +28,9 @@ Each package is in `Packages/<name>/`, or, installed from git, in `Library/Packa
   input handling, and the Test Framework.
 - **Game code goes in its own assembly** (an `.asmdef` in `Assets/Scripts`) so simulations can
   reference it; simulations go in a test assembly in `Assets/Simulations` (the README has it).
+- **Open the project with `unity open . --until-ready`**: it waits until the Editor takes commands and fails
+  if a dialog stops it. Scripts that don't compile ask about Safe Mode before the Editor loads:
+  `Tools~/unity-dialog press "Ignore"`, then `unity recompile` prints the errors to fix.
 - **Keep a saved scene open** (`unity command scene open Assets/…/X.unity`) and change scenes through
   their text, which saves itself. An untitled scene with changes makes the next test run ask "save
   changes?", and that modal dialog stops the Editor.
@@ -65,6 +68,13 @@ screenshots that look right and no errors logged.
 - **Input does nothing:** the game reads `UnityEngine.Input`; it must read the Input System.
 - **A replay differs:** state in statics, or real time (`Time.unscaledTime`, `WaitForSecondsRealtime`).
   A simulation's clock is game time.
+- **The layout is wrong for the screen you meant:** a capture is the size the game runs at, which is
+  the Game view's unless the test says otherwise. `yield return SetResolution(1080, 1920)` before `Load`.
+- **A fade, a UI transition or a sound doesn't move:** it runs on unscaled time, which is real time.
+  Play that stretch with `yield return PlayInRealTime(seconds)`.
+- **Is it silent?** `AudioLevel()` is the RMS the listener heard last: above 0 when the game plays sound.
+- **Something from the last test is still there:** `Load` destroys what `DontDestroyOnLoad` kept, unless
+  it was given `keepAcrossScenes: true`.
 - **A `unity command` times out, or "did not start within" its timeout:** a modal dialog blocks the
   Editor. Run `Tools~/unity-dialog` to read it, then `Tools~/unity-dialog press "Cancel"` — the button
   that loses nothing. "No dialog" means it's compiling or importing: wait a minute. Still blocked:
